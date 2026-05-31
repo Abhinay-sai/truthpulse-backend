@@ -92,6 +92,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  profilePhoto: {
+    type: String,
+    default: '',
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -150,7 +154,7 @@ app.post('/auth/register', async (req, res) => {
     res.status(201).json({
       message: 'Account created successfully',
       token,
-      user: { id: user._id, name: user.name, email: user.email },
+      user: { id: user._id, name: user.name, email: user.email, profilePhoto: user.profilePhoto },
     });
   } catch (error) {
     console.error('Register error:', error);
@@ -189,7 +193,7 @@ app.post('/auth/login', async (req, res) => {
     res.json({
       message: 'Login successful',
       token,
-      user: { id: user._id, name: user.name, email: user.email },
+      user: { id: user._id, name: user.name, email: user.email, profilePhoto: user.profilePhoto },
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -217,18 +221,19 @@ app.get('/auth/me', authenticateToken, async (req, res) => {
 
 app.put('/auth/update', authenticateToken, async (req, res) => {
   try {
-    const { name, password } = req.body;
+    const { name, password, profilePhoto } = req.body;
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     
     if (name) user.name = name.trim();
+    if (profilePhoto) user.profilePhoto = profilePhoto;
     if (password && password.length >= 6) {
       const salt = await bcrypt.genSalt(12);
       user.password = await bcrypt.hash(password, salt);
     }
     
     await user.save();
-    res.json({ message: 'Profile updated successfully', user: { id: user._id, name: user.name, email: user.email } });
+    res.json({ message: 'Profile updated successfully', user: { id: user._id, name: user.name, email: user.email, profilePhoto: user.profilePhoto } });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update profile' });
   }
