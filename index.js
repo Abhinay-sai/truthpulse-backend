@@ -12,6 +12,7 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const axios = require('axios');
 const cheerio = require('cheerio');
+const nodemailer = require('nodemailer');
 
 const {
   GoogleGenerativeAI,
@@ -97,6 +98,8 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  resetPasswordToken: String,
+  resetPasswordExpires: Date,
   createdAt: {
     type: Date,
     default: Date.now,
@@ -237,6 +240,96 @@ app.put('/auth/update', authenticateToken, async (req, res) => {
     res.json({ message: 'Profile updated successfully', user: { id: user._id, name: user.name, email: user.email, profilePhoto: user.profilePhoto } });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// ================================
+// AUTH: FORGOT PASSWORD
+// ================================
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+app.post('/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ error: 'No account with that email found' });
+    }
+
+    // Generate 6-digit code
+    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+    user.resetPasswordToken = resetCode;
+    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+    await user.save();
+
+    const mailOptions = {
+      from: '"TruthPulse App" <no-reply@truthpulse.com>',
+      to: user.email,
+      subject: 'Password Reset Code - TruthPulse',
+      text: \`You are receiving this because you (or someone else) have requested the reset of the password for your account.\n\n
+Your password reset verification code is: \${resetCode}\n\n
+This code will expire in 1 hour.\n\n
+If you did not request this, please ignore this email and your password will remain unchanged.\n\`,
+    };
+
+    transporter.sendMail(mailOptions, (err) => {
+      if (err) {
+        console.error('Email send error:', err);
+        return res.status(500).json({ error: 'Error sending email' });
+      }
+      res.json({ message: 'Reset code sent to email' });
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Failed to process forgot password request' });
+  }
+});
+
+// ================================
+// AUTH: RESET PASSWORD
+// ================================
+
+app.post('/auth/reset-password', async (req, res) => {
+  try {
+    const { email, token, newPassword } = req.body;
+    
+    if (!email || !token || !newPassword) {
+      return res.status(400).json({ error: 'Email, code, and new password are required' });
+    }
+    
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    const user = await User.findOne({
+      email: email.toLowerCase(),
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or expired verification code' });
+    }
+
+    const salt = await bcrypt.genSalt(12);
+    user.password = await bcrypt.hash(newPassword, salt);
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.json({ message: 'Password has been reset successfully' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Failed to reset password' });
   }
 });
 
