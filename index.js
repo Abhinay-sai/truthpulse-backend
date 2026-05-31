@@ -275,10 +275,7 @@ app.post('/auth/forgot-password', async (req, res) => {
       from: '"TruthPulse App" <no-reply@truthpulse.com>',
       to: user.email,
       subject: 'Password Reset Code - TruthPulse',
-      text: \`You are receiving this because you (or someone else) have requested the reset of the password for your account.\n\n
-Your password reset verification code is: \${resetCode}\n\n
-This code will expire in 1 hour.\n\n
-If you did not request this, please ignore this email and your password will remain unchanged.\n\`,
+      text: `You are receiving this because you (or someone else) have requested the reset of the password for your account.\n\nYour password reset verification code is: ${resetCode}\n\nThis code will expire in 1 hour.\n\nIf you did not request this, please ignore this email and your password will remain unchanged.\n`,
     };
 
     transporter.sendMail(mailOptions, (err) => {
