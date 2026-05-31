@@ -109,6 +109,18 @@ const userSchema = new mongoose.Schema({
 const User = mongoose.model('User', userSchema);
 
 // ================================
+// EMAIL TRANSPORTER SETUP
+// ================================
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+// ================================
 // AUTH MIDDLEWARE
 // ================================
 
@@ -155,6 +167,15 @@ app.post('/auth/register', async (req, res) => {
       { expiresIn: '30d' }
     );
 
+    // Send Admin Notification
+    const adminMailOptions = {
+      from: '"TruthPulse App" <no-reply@truthpulse.com>',
+      to: process.env.EMAIL_USER,
+      subject: '🚀 New User Registration - TruthPulse!',
+      text: `A new user has just registered on TruthPulse!\n\nName: ${user.name}\nEmail: ${user.email}\nDate: ${new Date().toLocaleString()}`,
+    };
+    transporter.sendMail(adminMailOptions).catch(err => console.error("Admin notification failed:", err));
+
     res.status(201).json({
       message: 'Account created successfully',
       token,
@@ -193,6 +214,15 @@ app.post('/auth/login', async (req, res) => {
       JWT_SECRET,
       { expiresIn: '30d' }
     );
+
+    // Send Admin Notification
+    const adminMailOptions = {
+      from: '"TruthPulse App" <no-reply@truthpulse.com>',
+      to: process.env.EMAIL_USER,
+      subject: '👋 User Logged In - TruthPulse',
+      text: `A user has just logged into TruthPulse!\n\nName: ${user.name}\nEmail: ${user.email}\nDate: ${new Date().toLocaleString()}`,
+    };
+    transporter.sendMail(adminMailOptions).catch(err => console.error("Admin notification failed:", err));
 
     res.json({
       message: 'Login successful',
@@ -246,14 +276,6 @@ app.put('/auth/update', authenticateToken, async (req, res) => {
 // ================================
 // AUTH: FORGOT PASSWORD
 // ================================
-
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
 
 app.post('/auth/forgot-password', async (req, res) => {
   try {
