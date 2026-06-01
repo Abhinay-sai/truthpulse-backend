@@ -1163,7 +1163,7 @@ Each object must have:
 - upvotes (number)
 - aiProbability (number between 0 and 100)
 - comments (an array of 1 to 3 objects, each having "user" and "text" string fields)
-- imageUrl (optional string, a random unsplash url like "https://images.unsplash.com/photo-1516387938699-a93567ec168e?q=80&w=800&auto=format&fit=crop" or similar, mix of present and null)
+- imageUrl (optional string, generate a valid url exactly like "https://picsum.photos/seed/[random_word]/800/600" replacing [random_word] with a random 5-letter word, mix of present and null)
 `;
     const result = await model.generateContent(prompt);
     let rawText = result.response.text().replace(/```json/gi, "").replace(/```/g, "").trim();
@@ -1182,7 +1182,7 @@ app.get('/quiz', authenticateToken, async (req, res) => {
 Generate 3 realistic quiz questions for spotting deepfakes/AI.
 Return ONLY a raw JSON array of objects without markdown formatting.
 Each object must have:
-- imageUrl (string, use a random unsplash image url)
+- imageUrl (string, generate a valid url exactly like "https://picsum.photos/seed/[random_word]/800/600" replacing [random_word] with a random 5-letter word)
 - isAiGenerated (boolean)
 - explanation (string, explaining why it is or isn't AI generated based on typical tells)
 `;
