@@ -386,7 +386,7 @@ app.post(
       const model =
         genAI.getGenerativeModel({
 
-          model: "gemini-2.5-flash",
+          model: "gemini-1.5-flash",
 
         });
 
@@ -573,7 +573,7 @@ app.post(
         return res.status(400).json({ error: "Text is required" });
       }
 
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
       const prompt = `
 Analyze the following text carefully.
@@ -659,7 +659,7 @@ app.post(
         return res.status(400).json({ error: "URL is required" });
       }
 
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
       const prompt = `
 Analyze the content at the following URL. Note: you may need to rely on the URL structure or general web context if direct crawling fails.
@@ -740,7 +740,7 @@ app.post(
         return res.status(400).json({ error: "No files uploaded" });
       }
 
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
       const results = [];
 
       for (let file of req.files) {
@@ -875,7 +875,7 @@ app.post('/analyze-social', authenticateToken, async (req, res) => {
     const { handle, deepScan } = req.body;
     if (!handle) return res.status(400).json({ error: "Missing handle" });
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const scanLevel = deepScan ? "Perform a rigorous, multi-step analysis" : "Perform a standard analysis";
 
     const prompt = `
@@ -931,7 +931,7 @@ app.post('/analyze-document', authenticateToken, upload.single('document'), asyn
     if (!req.file) return res.status(400).json({ error: "No document uploaded" });
     
     const deepScan = req.body.deepScan === 'true';
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const fileMimeType = req.file.mimetype;
     
     // Upload document to Gemini (Gemini supports pdf and text)
@@ -1008,7 +1008,7 @@ app.post('/analyze-document', authenticateToken, upload.single('document'), asyn
 // ================================
 app.post("/analyze-live-audio", authenticateToken, async (req, res) => {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const prompt = `
 You are an expert audio forensics AI. A user just recorded a 5-second ambient audio clip in a live setting.
 Generate a realistic JSON report analyzing this audio for deepfake synthesis artifacts, background noise consistency, and vocal tract modeling anomalies.
@@ -1089,7 +1089,7 @@ app.post("/analyze-url", authenticateToken, async (req, res) => {
 
     // 3. Send to Gemini
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: "gemini-1.5-flash",
     });
 
     const prompt = `
@@ -1152,7 +1152,7 @@ app.post("/analyze-url", authenticateToken, async (req, res) => {
 
 app.get('/feed', authenticateToken, async (req, res) => {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const prompt = `
 Generate 3 realistic community feed posts for a deepfake detection app called "TruthPulse".
 Return ONLY a raw JSON array of objects without markdown formatting.
@@ -1177,7 +1177,7 @@ Each object must have:
 
 app.get('/quiz', authenticateToken, async (req, res) => {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const prompt = `
 Generate 3 realistic quiz questions for spotting deepfakes/AI.
 Return ONLY a raw JSON array of objects without markdown formatting.
@@ -1198,7 +1198,7 @@ Each object must have:
 
 app.get('/news', authenticateToken, async (req, res) => {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const prompt = `
 Generate 5 realistic news headlines and short subtitles about AI, deepfakes, and cybersecurity.
 Return ONLY a raw JSON array of objects without markdown formatting.
@@ -1218,7 +1218,7 @@ Each object must have:
 
 app.get('/learning', authenticateToken, async (req, res) => {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const prompt = `
 Generate 4 realistic learning hub articles about deepfake detection.
 Return ONLY a raw JSON array of objects without markdown formatting.
