@@ -154,6 +154,15 @@ const userSchema = new mongoose.Schema({
   verificationExpires: Date,
   resetPasswordToken: String,
   resetPasswordExpires: Date,
+  twoFactorSecret: String,
+  isTwoFactorEnabled: { type: Boolean, default: false },
+  activeSessions: [{
+    deviceId: String,
+    deviceName: String,
+    location: String,
+    lastActive: Date,
+    token: String
+  }],
   settings: {
     notifications: { type: Boolean, default: true },
     autoSave: { type: Boolean, default: true },
@@ -183,15 +192,25 @@ const transporter = nodemailer.createTransport({
 // AUTH MIDDLEWARE
 // ================================
 
-const authenticateToken = (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'No token provided' });
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: 'Invalid or expired token' });
-    req.user = user;
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    const user = await User.findById(payload.id);
+    if (!user) return res.status(403).json({ error: 'User no longer exists' });
+    
+    // Check if session is still active
+    const isActive = user.activeSessions.some(session => session.token === token);
+    if (!isActive) return res.status(401).json({ error: 'Session expired or logged out from another device' });
+    
+    req.user = payload;
+    req.rawToken = token; // store for easy deletion
     next();
-  });
+  } catch(err) {
+    return res.status(403).json({ error: 'Invalid or expired token' });
+  }
 };
 
 // ================================
@@ -515,6 +534,106 @@ app.post('/auth/reset-password', async (req, res) => {
   } catch (error) {
     console.error('Reset password error:', error);
     res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// ================================
+// EXPORT DATA
+// ================================
+app.get('/user/export', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    const history = await Scan.find({ userId: req.user.id });
+    const notifications = await Notification.find({ userId: req.user.id });
+    res.json({ profile: user, history, notifications });
+  } catch (error) {
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+// ================================
+// ACTIVE SESSIONS
+// ================================
+app.get('/auth/sessions', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    res.json(user.activeSessions);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch sessions' });
+  }
+});
+
+app.delete('/auth/sessions/:token', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    user.activeSessions = user.activeSessions.filter(s => s.token !== req.params.token);
+    await user.save();
+    res.json({ message: 'Session logged out' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to logout session' });
+  }
+});
+
+// ================================
+// 2FA (TWO-FACTOR AUTH)
+// ================================
+const speakeasy = require('speakeasy');
+const qrcode = require('qrcode');
+
+app.post('/auth/2fa/generate', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    const secret = speakeasy.generateSecret({ name: 'TruthPulse (' + user.email + ')' });
+    user.twoFactorSecret = secret.base32;
+    await user.save();
+    const qrUrl = await qrcode.toDataURL(secret.otpauth_url);
+    res.json({ secret: secret.base32, qrCode: qrUrl });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to generate 2FA' });
+  }
+});
+
+app.post('/auth/2fa/verify', authenticateToken, async (req, res) => {
+  try {
+    const { pin } = req.body;
+    const user = await User.findById(req.user.id);
+    const verified = speakeasy.totp.verify({ secret: user.twoFactorSecret, encoding: 'base32', token: pin });
+    if (verified) {
+      user.isTwoFactorEnabled = true;
+      await user.save();
+      res.json({ message: '2FA successfully enabled' });
+    } else {
+      res.status(400).json({ error: 'Invalid PIN' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Verification failed' });
+  }
+});
+
+app.post('/auth/2fa/login-verify', async (req, res) => {
+  try {
+    const { userId, pin } = req.body;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const verified = speakeasy.totp.verify({ secret: user.twoFactorSecret, encoding: 'base32', token: pin });
+    
+    if (verified) {
+      const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+      const deviceName = req.headers['user-agent']?.substring(0, 30) || 'Unknown Device';
+      user.activeSessions.push({
+        deviceId: 'dev_' + Date.now(),
+        deviceName: deviceName,
+        location: 'Unknown Location',
+        lastActive: new Date(),
+        token: token
+      });
+      await user.save();
+      res.json({ token, user: { id: user._id, name: user.name, email: user.email }});
+    } else {
+      res.status(400).json({ error: 'Invalid PIN' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Login failed' });
   }
 });
 
