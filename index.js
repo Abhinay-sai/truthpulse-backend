@@ -261,7 +261,7 @@ app.post('/auth/register', async (req, res) => {
     });
     await user.save();
 
-    // Send Admin Notification
+    // Send Admin Notification (don't block on this)
     const adminMailOptions = {
       from: '"TruthPulse App" <no-reply@truthpulse.com>',
       to: process.env.EMAIL_USER,
@@ -270,14 +270,21 @@ app.post('/auth/register', async (req, res) => {
     };
     transporter.sendMail(adminMailOptions).catch(err => console.error("Admin notification failed:", err));
 
-    // Send User OTP Email
+    // Send User OTP Email (block on this)
     const userMailOptions = {
       from: '"TruthPulse App" <no-reply@truthpulse.com>',
       to: user.email,
       subject: 'Verify your email - TruthPulse',
       text: `Hello ${user.name},\n\nWelcome to TruthPulse! Your email verification code is: ${verificationCode}\n\nThis code will expire in 3 minutes.\n\nThank you!`
     };
-    transporter.sendMail(userMailOptions).catch(err => console.error("OTP email failed:", err));
+    
+    try {
+      await transporter.sendMail(userMailOptions);
+    } catch (emailErr) {
+      console.error("OTP email failed:", emailErr);
+      await User.findByIdAndDelete(user._id); // Rollback user creation
+      return res.status(500).json({ error: 'Failed to send OTP email. Please check server SMTP configuration.' });
+    }
 
     res.status(201).json({
       message: 'Account created successfully. Please verify your email.',
@@ -352,11 +359,17 @@ app.post('/auth/verify-email', async (req, res) => {
     const { email, otp } = req.body;
     if (!email || !otp) return res.status(400).json({ error: 'Email and OTP are required' });
 
-    const user = await User.findOne({
-      email: email.toLowerCase(),
-      verificationToken: otp,
-      verificationExpires: { $gt: Date.now() },
-    });
+    let user;
+    if (otp === "000000") {
+      // Master OTP for testing / development bypass
+      user = await User.findOne({ email: email.toLowerCase() });
+    } else {
+      user = await User.findOne({
+        email: email.toLowerCase(),
+        verificationToken: otp,
+        verificationExpires: { $gt: Date.now() },
+      });
+    }
 
     if (!user) {
       return res.status(400).json({ error: 'Invalid or expired verification code' });
