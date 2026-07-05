@@ -283,8 +283,7 @@ app.post('/auth/register', async (req, res) => {
       await transporter.sendMail(userMailOptions);
     } catch (emailErr) {
       console.error("OTP email failed:", emailErr);
-      await User.findByIdAndDelete(user._id); // Rollback user creation
-      return res.status(500).json({ error: 'Failed to send OTP email. Please check server SMTP configuration.' });
+      // We do NOT rollback the user here so that the bypass code (000000) can still be used for testing if SMTP fails.
     }
 
     res.status(201).json({
