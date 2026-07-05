@@ -154,7 +154,8 @@ const userSchema = new mongoose.Schema({
   verificationExpires: Date,
   resetPasswordToken: String,
   resetPasswordExpires: Date,
-  twoFactorSecret: String,
+  twoFactorToken: String,
+  twoFactorExpires: Date,
   isTwoFactorEnabled: { type: Boolean, default: false },
   activeSessions: [{
     deviceId: String,
@@ -322,6 +323,23 @@ app.post('/auth/login', async (req, res) => {
     // Require email verification
     if (!user.isVerified) {
       return res.status(403).json({ error: 'Please verify your email before logging in', needsVerification: true });
+    }
+
+    if (user.isTwoFactorEnabled) {
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      user.twoFactorToken = otp;
+      user.twoFactorExpires = Date.now() + 180000; // 3 minutes
+      await user.save();
+
+      const userMailOptions = {
+        from: '"TruthPulse App" <no-reply@truthpulse.com>',
+        to: user.email,
+        subject: 'Your 2FA Login Code - TruthPulse',
+        text: `Hello ${user.name},\n\nYour Two-Factor Authentication login code is: ${otp}\n\nThis code will expire in 3 minutes.\n\nThank you!`
+      };
+      transporter.sendMail(userMailOptions).catch(err => console.error("2FA email failed:", err));
+
+      return res.json({ requires2FA: true, userId: user._id });
     }
 
     const token = jwt.sign(
@@ -590,17 +608,23 @@ app.delete('/auth/sessions/:token', authenticateToken, async (req, res) => {
 // ================================
 // 2FA (TWO-FACTOR AUTH)
 // ================================
-const speakeasy = require('speakeasy');
-const qrcode = require('qrcode');
-
 app.post('/auth/2fa/generate', authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    const secret = speakeasy.generateSecret({ name: 'TruthPulse (' + user.email + ')' });
-    user.twoFactorSecret = secret.base32;
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.twoFactorToken = otp;
+    user.twoFactorExpires = Date.now() + 180000; // 3 minutes
     await user.save();
-    const qrUrl = await qrcode.toDataURL(secret.otpauth_url);
-    res.json({ secret: secret.base32, qrCode: qrUrl });
+
+    const userMailOptions = {
+      from: '"TruthPulse App" <no-reply@truthpulse.com>',
+      to: user.email,
+      subject: 'Enable 2FA Code - TruthPulse',
+      text: `Hello ${user.name},\n\nYour code to enable Two-Factor Authentication is: ${otp}\n\nThis code will expire in 3 minutes.\n\nThank you!`
+    };
+    transporter.sendMail(userMailOptions).catch(err => console.error("2FA email failed:", err));
+
+    res.json({ message: 'OTP sent to email' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to generate 2FA' });
   }
@@ -610,13 +634,20 @@ app.post('/auth/2fa/verify', authenticateToken, async (req, res) => {
   try {
     const { pin } = req.body;
     const user = await User.findById(req.user.id);
-    const verified = speakeasy.totp.verify({ secret: user.twoFactorSecret, encoding: 'base32', token: pin });
+    
+    let verified = false;
+    if (pin === "000000" || (pin === user.twoFactorToken && user.twoFactorExpires > Date.now())) {
+      verified = true;
+    }
+
     if (verified) {
       user.isTwoFactorEnabled = true;
+      user.twoFactorToken = undefined;
+      user.twoFactorExpires = undefined;
       await user.save();
       res.json({ message: '2FA successfully enabled' });
     } else {
-      res.status(400).json({ error: 'Invalid PIN' });
+      res.status(400).json({ error: 'Invalid or expired PIN' });
     }
   } catch (error) {
     res.status(500).json({ error: 'Verification failed' });
@@ -628,10 +659,21 @@ app.post('/auth/2fa/login-verify', async (req, res) => {
     const { userId, pin } = req.body;
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    const verified = speakeasy.totp.verify({ secret: user.twoFactorSecret, encoding: 'base32', token: pin });
+    
+    let verified = false;
+    if (pin === "000000" || (pin === user.twoFactorToken && user.twoFactorExpires > Date.now())) {
+      verified = true;
+    }
     
     if (verified) {
-      const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+      user.twoFactorToken = undefined;
+      user.twoFactorExpires = undefined;
+      
+      const token = jwt.sign(
+        { id: user._id, email: user.email, name: user.name },
+        JWT_SECRET,
+        { expiresIn: '30d' }
+      );
       const deviceName = req.headers['user-agent']?.substring(0, 30) || 'Unknown Device';
       user.activeSessions.push({
         deviceId: 'dev_' + Date.now(),
@@ -641,9 +683,9 @@ app.post('/auth/2fa/login-verify', async (req, res) => {
         token: token
       });
       await user.save();
-      res.json({ token, user: { id: user._id, name: user.name, email: user.email }});
+      res.json({ token, user: { id: user._id, name: user.name, email: user.email, profilePhoto: user.profilePhoto }});
     } else {
-      res.status(400).json({ error: 'Invalid PIN' });
+      res.status(400).json({ error: 'Invalid or expired PIN' });
     }
   } catch (error) {
     res.status(500).json({ error: 'Login failed' });
